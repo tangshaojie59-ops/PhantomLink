@@ -1,0 +1,15 @@
+build/
+obj/
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.lst
+*.map
+
+.settings/
+.mrs/*.snapshot
+
+Thumbs.db
+.DS_Store

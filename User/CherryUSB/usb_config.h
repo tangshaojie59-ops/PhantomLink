@@ -1,0 +1,29 @@
+#ifndef _USB_CONFIG_H_
+#define _USB_CONFIG_H_
+
+#include <stdio.h>
+#include "ch32v20x.h"
+
+#define CONFIG_USB_PRINTF(...) printf(__VA_ARGS__)
+
+#define CONFIG_USB_DBG_LEVEL USB_DBG_INFO
+
+#define CONFIG_USB_ALIGN_SIZE 4
+
+#define CONFIG_USBDEV_REQUEST_BUFFER_LEN 512
+
+#define CONFIG_USBDEV_ADVANCE_DESC
+
+#define CONFIG_USBDEV_MAX_BUS 1
+
+#define CONFIG_USBDEV_EP_NUM 8
+
+#define CONFIG_USBDEV_FSDEV_PMA_ACCESS 2
+
+#define CONFIG_USB_FSDEV_RAM_SIZE 512
+
+#define USB_BASE 0x40005C00
+
+#define USB_NOCACHE_RAM_SECTION
+
+#endif
