@@ -176,7 +176,7 @@ static const uint8_t config_descriptor[] = {
     CC_EP_ADDR,
     0x03,
     WBVAL(USBD_CC_EP_SIZE),
-    0x0A
+    0x01
 };
 
 static const char *string_descriptors[] = {

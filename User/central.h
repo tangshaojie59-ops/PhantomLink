@@ -37,6 +37,7 @@ extern "C" {
 #define START_READ_RSSI_EVT           0x0100
 #define ESTABLISH_LINK_TIMEOUT_EVT    0x0200
 #define START_DISC_CHAR_EVT           0x0400
+#define START_WRITE_PROTOCOL_EVT      0x0800
 
 /*********************************************************************
  * MACROS

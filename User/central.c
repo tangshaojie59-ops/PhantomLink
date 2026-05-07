@@ -67,10 +67,10 @@
 #define DEFAULT_RSSI_PERIOD                 2400
 
 // Minimum connection interval (units of 1.25ms)
-#define DEFAULT_UPDATE_MIN_CONN_INTERVAL    5
+#define DEFAULT_UPDATE_MIN_CONN_INTERVAL    6
 
 // Maximum connection interval (units of 1.25ms)
-#define DEFAULT_UPDATE_MAX_CONN_INTERVAL    5
+#define DEFAULT_UPDATE_MAX_CONN_INTERVAL    6
 
 // Slave latency to use parameter update
 #define DEFAULT_UPDATE_SLAVE_LATENCY        0
@@ -97,7 +97,7 @@
 #define DEFAULT_SVC_DISCOVERY_DELAY         1800
 
 // Default parameter update delay in 0.625ms
-#define DEFAULT_PARAM_UPDATE_DELAY          3200
+#define DEFAULT_PARAM_UPDATE_DELAY          1600
 
 // Default phy update delay in 0.625ms
 #define DEFAULT_PHY_UPDATE_DELAY            2400
@@ -185,10 +185,12 @@ static uint16_t centralSvcEndHdl = 0;
 // Discovered characteristic handle
 static uint16_t centralCharHdl = 0;
 
-#define MAX_CCCD_NUM 5
+#define MAX_CCCD_NUM 6
 static uint16_t centralCCCDList[MAX_CCCD_NUM];
+static uint16_t centralValueHdlList[MAX_CCCD_NUM];
 static uint8_t centralCCCDCount = 0;
 static uint8_t centralCCCDIndex = 0;
+static uint16_t centralProtocolModeHdl = 0;
 
 // Value to write
 static uint8_t centralCharVal = 0x5A;
@@ -442,6 +444,34 @@ uint16_t Central_ProcessEvent(uint8_t task_id, uint16_t events)
         return (events ^ START_DISC_CHAR_EVT);
     }
 
+    if(events & START_WRITE_PROTOCOL_EVT)
+    {
+        if(centralProcedureInProgress == FALSE && centralProtocolModeHdl != 0)
+        {
+            attWriteReq_t req;
+
+            req.cmd = TRUE;
+            req.sig = FALSE;
+            req.handle = centralProtocolModeHdl;
+            req.len = 1;
+            req.pValue = GATT_bm_alloc(centralConnHandle, ATT_WRITE_CMD, req.len, NULL, 0);
+            if(req.pValue != NULL)
+            {
+                req.pValue[0] = 0x01;
+                PRINT("Setting Protocol Mode to Report (0x01) on handle 0x%04X\n", req.handle);
+                if(GATT_WriteCharValue(centralConnHandle, &req, centralTaskId) == SUCCESS)
+                {
+                    PRINT("Protocol Mode set successfully\n");
+                }
+                else
+                {
+                    GATT_bm_free((gattMsg_t *)&req, ATT_WRITE_CMD);
+                }
+            }
+        }
+        return (events ^ START_WRITE_PROTOCOL_EVT);
+    }
+
     if(events & START_READ_RSSI_EVT)
     {
         GAPRole_ReadRssiCmd(centralConnHandle);
@@ -565,6 +595,9 @@ else if((pMsg->method == ATT_WRITE_RSP) ||
                 tmos_start_task(centralTaskId, START_WRITE_CCCD_EVT, 16);
             } else {
                 PRINT("? All HID channels successfully subscribed! Full monitor mode!\n");
+                if(centralProtocolModeHdl != 0) {
+                    tmos_start_task(centralTaskId, START_WRITE_PROTOCOL_EVT, 16);
+                }
             }
         }
     }
@@ -581,21 +614,31 @@ else if((pMsg->method == ATT_WRITE_RSP) ||
         if(len > 16) PRINT("...");
         PRINT("\n");
 
-        if(handle == 0x0029 && len == 8)
-        {
-            usbd_ep_start_write(0, 0x81, data, len);
+        /* Route notification to USB based on report length */
+        bool isSubscribed = false;
+        for(uint8_t i = 0; i < centralCCCDCount; i++) {
+            if(handle == centralValueHdlList[i]) {
+                isSubscribed = true;
+                break;
+            }
         }
-        else if(handle == 0x0043 && len == 7)
-        {
-            usbd_ep_start_write(0, 0x82, data, 7);
-        }
-        else if(handle == 0x0030 && len == 2)
-        {
-            usbd_ep_start_write(0, 0x83, data, len);
-        }
-        else if(handle == 0x0019)
-        {
-            PRINT("Drop Touchpad data to protect USB Mouse driver.\n");
+
+        if(isSubscribed) {
+            if(len == 8) {
+                usbd_ep_start_write(0, 0x81, data, len);
+            } else if(len == 7) {
+                usbd_ep_start_write(0, 0x82, data, 7);
+            } else if(len == 2) {
+                usbd_ep_start_write(0, 0x83, data, len);
+            } else {
+                PRINT("Unrouted subscribed notification len=%d from handle 0x%04X\n", len, handle);
+            }
+        } else {
+            if(handle == 0x0019) {
+                PRINT("Drop Touchpad data to protect USB Mouse driver.\n");
+            } else {
+                PRINT("Notification from unsubscribed handle 0x%04X (len=%d)\n", handle, len);
+            }
         }
     }
     else if(centralDiscState != BLE_DISC_STATE_IDLE)
@@ -789,6 +832,7 @@ static void centralEventCB(gapRoleEvent_t *pEvent)
             centralCharHdl = 0;
             centralCCCDCount = 0;
             centralCCCDIndex = 0;
+            centralProtocolModeHdl = 0;
             centralScanRes = 0;
             centralProcedureInProgress = FALSE;
             tmos_stop_task(centralTaskId, START_READ_RSSI_EVT);
@@ -971,9 +1015,15 @@ static void centralGATTDiscoveryEvent(gattMsgEvent_t *pMsg)
                 {
                     if(centralCCCDCount < MAX_CCCD_NUM) {
                         centralCCCDList[centralCCCDCount] = valHdl + 2;
+                        centralValueHdlList[centralCCCDCount] = valHdl;
                         PRINT("Found Channel %d! Value Hdl: 0x%04X, CCCD: 0x%04X\n", centralCCCDCount, valHdl, centralCCCDList[centralCCCDCount]);
                         centralCCCDCount++;
                     }
+                }
+                else if(uuid == 0x2A4E)
+                {
+                    centralProtocolModeHdl = valHdl;
+                    PRINT("Found Protocol Mode! Value Hdl: 0x%04X\n", valHdl);
                 }
 
                 p += 7;
